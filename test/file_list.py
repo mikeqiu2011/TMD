@@ -5,7 +5,7 @@ import time
 def get_files(dir,size_above):
     """
     To get all files details under a given directory recursively
-    :param dir: shall be a valid root path
+    :param dir: shall be a valid root_dir path
     :param size_above: file with size above this threshold will be returned
     :return:
     """
@@ -28,8 +28,8 @@ def get_files(dir,size_above):
             get_files(path,size_above)
 
 
-# root = "/Users/mike/PycharmProjects/"
-root = input("pls input valid root path\n")
+# root_dir = "/Users/mike/PycharmProjects/"
+root = input("pls input valid root_dir path\n")
 
 result = []
 get_files(root, 5)
