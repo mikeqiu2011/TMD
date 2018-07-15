@@ -7,7 +7,7 @@ import sys
 
 # set logger
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.WARN)
 formatter = logging.Formatter('%(asctime)s %(levelname)-8s: %(message)s')
 
 # file handler
@@ -24,14 +24,32 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # read parameter file
-import configparser
+import ConfigParser
 
-config = configparser.ConfigParser()
+config = ConfigParser.ConfigParser()
 config.read('file_details.ini')
 root_dir = config.get(section='file', option='root_dir')
 size_above = int(config.get(section='file', option='size_above'))
 not_accessed_threshold = int(config.get(section='file', option='not_accessed_threshold'))
 not_modified_threshold = int(config.get(section='file', option='not_modified_threshold'))
+
+#get all OS mount points
+import commands
+
+mount = commands.getoutput('df -h')
+lines = mount.split('\n')
+logger.info(lines)
+mount_points = map(lambda line: line.split()[-1], lines[1:])
+mount_points.remove('/')
+logger.info(mount_points)
+
+
+def get_mount(path, mount_list):
+    for mount_point in mount_list:
+        if path.startswith(mount_point):
+            return mount_point
+    return '/'
+
 
 
 def get_file_details(dir, size_above):
@@ -46,7 +64,7 @@ def get_file_details(dir, size_above):
             try:
                 path = os.path.join(dirpath, filename)
 
-                size = round(os.path.getsize(path) / 1024)
+                size = round(os.path.getsize(path) / 1024, 0)
                 access_timestamp = os.path.getatime(path)
                 modify_timestamp = os.path.getmtime(path)
                 now_timestamp = time.time()
@@ -55,29 +73,36 @@ def get_file_details(dir, size_above):
 
                 if size > size_above and not_accessed_for_days > not_accessed_threshold and not_modified_for_days > not_modified_threshold:
                     type = filename.split(".")[-1]
-
-                    record = {"type": type, "size_KB": size, "not_accessed_for_days": not_accessed_for_days,
+                    mount_point = get_mount(path, mount_points)
+                    record = {"type": type, "size_KB": size, "mount_point": mount_point,
+                              "not_accessed_for_days": not_accessed_for_days,
                               "not_modified_for_days": not_modified_for_days, "path": path}
-                    logger.info(record)
+                    # logger.info(record)
                     yield record
             except Exception as e:
                 logger.error(e)
 
 
-
-
 file_detail_gen = get_file_details(root_dir, size_above)
 
+#sort the list
 import operator
-file_list = [file for file in file_detail_gen]
-file_list_sorted = sorted(file_list, key=operator.itemgetter('size_KB','not_accessed_for_days','not_modified_for_days'),reverse=True)
+
+# file_list = [file for file in file_detail_gen]
+file_list = list(file_detail_gen)
+file_list_sorted = sorted(file_list,
+                          key=operator.itemgetter('size_KB', 'not_accessed_for_days', 'not_modified_for_days'),
+                          reverse=True)
 
 # write to a CSV file
-with open(hostname + '_file_usage_report.csv', 'w', newline='') as csvFile:
+with open(hostname + '_file_aging_profile.csv', 'w') as csvFile:
     writer = csv.writer(csvFile)
 
     # write title for CSV
-    writer.writerow(['Type', 'size_KB', 'not_accessed_for_days', 'not_modified_for_days', "Path"])
+    writer.writerow(['mount_point', 'size_KB', 'not_modified_for_days', 'not_accessed_for_days', "Path", 'Type'])
 
     for file in file_list_sorted:
+        # logger.info(file["type"],file["size_KB"],file["mount_point"],file["not_accessed_for_days"],file["not_modified_for_days"],file["path"])
         writer.writerow(file.values())
+        # content = file["type"] + "," + str(file["size_KB"]) + "," + file["mount_point"] + "," + str(file["not_accessed_for_days"]) + "," + str(file["not_modified_for_days"]) + "," + file["path"]
+        # writer.writerow(content)
